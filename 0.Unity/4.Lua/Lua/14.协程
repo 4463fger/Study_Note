@@ -1,0 +1,234 @@
+[TOC]
+
+# Lua 协程（Coroutine）详解
+
+Lua 协程是轻量级的**协作式线程**，允许函数执行过程中主动挂起并恢复，实现非阻塞式流程控制。
+
+协程的核心在于 `coroutine` 模块提供的 API。
+
+---
+
+## 一、协程的创建
+
+### 1. 使用 `coroutine.create()`
+
+```lua
+print("********协程的创建*********")
+fun = function()
+    print(123)
+end
+co = coroutine.create(fun)
+print(type(co))  -- 输出: thread（协程本质是线程对象）
+```
+
+> **关键特性**：
+> - `coroutine.create()` 接收一个函数，返回一个协程对象（线程类型）
+> - 协程此时处于 `suspended`（挂起）状态，尚未执行
+
+---
+
+### 2. 使用 `coroutine.wrap()`
+
+```lua
+co2 = coroutine.wrap(fun)
+print(type(co2))  -- 输出: function（返回一个函数）
+```
+
+> **关键特性**：
+> - `coroutine.wrap()` 与 `create()` 类似，但返回的是一个函数
+> - 调用该函数时会**立即启动协程**（等价于 `coroutine.resume(co)`）
+
+---
+
+## 二、协程的运行
+
+### 1. 通过 `coroutine.resume()`
+
+```lua
+print("********协程的运行*********")
+coroutine.resume(co)  -- 启动协程
+```
+
+> **规则**：
+> - 第一次调用 `resume()` 会启动协程并执行到第一个 `yield` 或 `return`
+> - 返回值表示协程是否执行成功（`true`/`false`）和 `yield` 返回的值
+
+---
+
+### 2. 通过 `coroutine.wrap()` 返回的函数
+
+```lua
+co2()  -- 直接调用函数启动协程
+```
+
+> **区别**：
+> - `wrap()` 返回的函数调用时会**自动 resume 协程**
+> - 无需显式调用 `coroutine.resume()`
+
+---
+
+## 三、协程的挂起与恢复
+
+### 1. 使用 `coroutine.yield()`
+
+```lua
+print("********协程的挂起*********")
+fun2 = function()
+    local i = 1
+    while true do
+        print(i)
+        i = i + 1
+        coroutine.yield(i)  -- 挂起并返回 i
+    end
+end
+
+co3 = coroutine.create(fun2)
+isOK, tempI = coroutine.resume(co3)  -- 第一次 resume
+print(isOK, tempI)  -- 输出: true, 1
+coroutine.resume(co3)  -- 第二次 resume，继续执行
+```
+
+> **关键特性**：
+> - `coroutine.yield(value)` 会**暂停协程执行**，并将 `value` 返回给 `resume()`
+> - 协程状态变为 `suspended`，等待下次 `resume()`
+
+---
+
+### 2. 通过 `coroutine.wrap()` 的挂起
+
+```lua
+co4 = coroutine.wrap(fun2)
+co4()  -- 第一次调用输出 1
+print("返回值 " .. co4())  -- 第二次调用输出 2
+```
+
+> **注意事项**：
+> - `wrap()` 返回的函数每次调用会自动 `resume`，并接收 `yield` 返回的值
+> - 无法获取 `resume()` 的第一个返回值（是否成功）
+
+---
+
+## 四、协程的状态
+
+```lua
+print("********协程的状态*********")
+print(coroutine.status(co3))  -- suspended
+print(coroutine.status(co))   -- dead（已执行完毕）
+```
+
+> **协程状态说明**：
+> | 状态        | 含义                              |
+> | ----------- | --------------------------------- |
+> | `suspended` | 协程暂停，等待 `resume()`         |
+> | `running`   | 协程正在运行                      |
+> | `dead`      | 协程已执行完毕（`return` 或异常） |
+
+---
+
+## 五、获取当前运行的协程
+
+```lua
+print(coroutine.running())  -- 返回当前运行的协程对象（主协程为 nil）
+```
+
+> **用途**：
+> - 在协程内部获取自身引用
+> - 主协程（main coroutine）调用时返回 `nil`
+
+---
+
+## 六、协程的完整生命周期
+
+```lua
+-- 示例：协程完整运行过程
+co = coroutine.create(function()
+    print("Start")
+    coroutine.yield(1)  -- 第一次挂起
+    print("Resume 1")
+    coroutine.yield(2)  -- 第二次挂起
+    print("Done")
+end)
+
+coroutine.resume(co)  -- 输出: Start
+coroutine.resume(co)  -- 输出: Resume 1
+coroutine.resume(co)  -- 输出: Done
+```
+
+> **状态变化**：
+> 1. 创建 → `suspended`
+> 2. 第一次 `resume` → 运行到 `yield` → `suspended`
+> 3. 第二次 `resume` → 运行到 `yield` → `suspended`
+> 4. 第三次 `resume` → 协程结束 → `dead`
+
+---
+
+## 七、协程的参数与返回值传递
+
+### 1. 向协程传递参数
+
+```lua
+co = coroutine.create(function(arg)
+    print("Arg:", arg)
+end)
+coroutine.resume(co, 100)  -- 输出: Arg: 100
+```
+
+> **规则**：
+> - `coroutine.resume(co, arg1, arg2, ...)` 将参数传递给协程函数
+
+---
+
+### 2. 从协程返回值
+
+```lua
+co = coroutine.create(function()
+    return "Hello", 123
+end)
+_, val1, val2 = coroutine.resume(co)
+print(val1, val2)  -- 输出: Hello 123
+```
+
+> **规则**：
+> - 协程的 `return` 值会作为 `resume()` 的返回值（忽略第一个 `true`）
+
+---
+
+## 八、常见注意事项
+
+1. **协程只能被启动一次**：
+   ```lua
+   co = coroutine.create(function() print(1) end)
+   coroutine.resume(co)  -- 正常
+   coroutine.resume(co)  -- 无效（协程已结束）
+   ```
+
+2. **协程内部不能直接调用 `coroutine.yield()`**：
+   ```lua
+   function foo()
+       coroutine.yield()  -- ❌ 错误（需在协程内部调用）
+   end
+   ```
+
+3. **协程异常处理**：
+   
+   ```lua
+   co = coroutine.create(function()
+       error("Oops")
+   end)
+   coroutine.resume(co)  -- 抛出异常，协程变为 dead
+   ```
+
+---
+
+## 九、总结
+
+| 特性             | 说明                                                         |
+| ---------------- | ------------------------------------------------------------ |
+| 协程创建         | `coroutine.create()` 返回线程对象，`coroutine.wrap()` 返回函数 |
+| 协程运行         | `coroutine.resume()` 启动或恢复协程，`wrap()` 返回的函数自动 resume |
+| 协程挂起         | `coroutine.yield()` 暂停执行并返回值，等待下次 resume        |
+| 协程状态         | `suspended`（挂起）、`running`（运行中）、`dead`（结束）     |
+| 参数与返回值传递 | `resume()` 可传递参数，协程 `return` 返回值                  |
+| 应用场景         | 分阶段任务、非阻塞 IO、游戏事件驱动等                        |
+
+> **提示**：Lua 协程是协作式的，必须主动调用 `resume()` 才能恢复执行。理解其生命周期和状态变化是高效使用协程的关键。
