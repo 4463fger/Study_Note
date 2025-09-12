@@ -1,0 +1,125 @@
+```csharp
+using System.IO;
+using UnityEngine;
+using XLua;
+
+namespace Frame
+{
+    /// <summary>
+    /// 提供Lua解析器
+    /// 保证解析器的唯一性
+    /// </summary>
+    public class LuaManager : SingletonMono<LuaManager>
+    {
+        // 执行Lua语言的函数
+        // 释放垃圾
+        // 销毁
+        // 重定向
+        private LuaEnv luaEnv;
+
+        /// <summary>
+        /// 得到Lua中的_G
+        /// </summary>
+        public LuaTable Global
+        {
+            get
+            {
+                return luaEnv.Global;
+            }
+        }
+        
+        /// <summary>
+        /// 初始化解析器
+        /// </summary>
+        public void OnInit()
+        {
+            if (luaEnv != null)
+                return;
+            luaEnv = new LuaEnv();
+            // 加载Lua脚本 重定向
+            luaEnv.AddLoader(MyCustomLoader);
+            //luaEnv.AddLoader(MyCustomABLoader);
+        }
+        
+        // 打包时，要把lua文件后缀改为.txt
+
+        /// <summary>
+        /// 执行Lua语言
+        /// </summary>
+        public void DoString(string str)
+        {
+            if (luaEnv == null)
+            {
+                Debug.LogError("Lua解析器未初始化");
+                return;
+            }
+            luaEnv.DoString(str);
+        }
+        
+        /// <summary>
+        /// 执行Lua语言
+        /// </summary>
+        /// <param name="fileName">Lua文件名</param>
+        public void DoLuaFile(string fileName)
+        {
+            string str = string.Format("require('{0}')", fileName);
+            DoString(str);
+        }
+
+        /// <summary>
+        /// 释放Lua垃圾
+        /// </summary>
+        public void Tick()
+        {
+            if (luaEnv == null)
+            {
+                Debug.LogError("Lua解析器未初始化");
+                return;
+            }
+            luaEnv.Tick();
+        }
+
+        /// <summary>
+        /// 销毁解析器
+        /// </summary>
+        public void Dispose()
+        {
+            if (luaEnv == null)
+            {
+                Debug.LogError("Lua解析器未初始化");
+                return;
+            }
+            luaEnv.Dispose();
+            luaEnv = null;
+        }
+        
+        private byte[] MyCustomLoader(ref string filePath)
+        {
+            // 填自定义的Lua文件路径
+            string path = Application.dataPath + "/[MAIN]/Lua/" + filePath + ".lua";
+            // 加载文件
+            if (File.Exists(path))
+            {
+                return File.ReadAllBytes(path);
+            }
+            else
+            {
+                Debug.Log("MyCustomLoader重定向失败，文件名: " + path);
+            }
+            return null;
+        }
+
+        // 重定向加载AB包中的Lua脚本
+        private byte[] MyCustomABLoader(ref string filePath)
+        {
+            TextAsset lua = ABManager.Instance.LoadRes<TextAsset>("lua", filePath + ".Lua");
+            if (lua != null)
+                return lua.bytes;
+            else
+                Debug.Log("重定向失败，文件名: " + filePath);
+            return null;
+        }
+    }
+}
+```
+
